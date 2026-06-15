@@ -1,44 +1,43 @@
-{% set version = "0.7.0.125" %}
+{% set version = "0.9.1.3056" %}
 {% set lib_version = version.split(".")[0]+"."+version.split(".")[1]+"."+version.split(".")[2] %}
-{% set platform = "placeholder" %}  # [not (linux64 or aarch64)]
-{% set platform = "linux-x86_64" %}  # [linux64]
-{% set platform = "linux-sbsa" %}    # [aarch64]
-{% set extension = "tar.xz" %}
-
-{% set cuda_compiler_version = cuda_compiler_version|default("None") %}
-{% set cuda_major = environ.get("cuda_compiler_version", "13.0").split(".")[0] %}
+{% set somajor = version.split(".")[0] %}
+{% set arm_variant_type = arm_variant_type | default("sbsa") %}
+{% set cuda_compiler_version = cuda_compiler_version | default("None") %}
 
 package:
   name: libcublasmp-split
   version: {{ version }}
 
 source:
-  url: https://developer.download.nvidia.com/compute/cublasmp/redist/libcublasmp/{{ platform }}/libcublasmp-{{ platform }}-{{ version }}_cuda{{ cuda_major }}-archive.{{ extension }}
-  sha256: f0236c824227145a219614ea4276154e02d1c469ab2762fc9379c1b143be4b7b  # [linux64 and (cuda_compiler_version or "").startswith("12")]
-  sha256: b7ece283533915d550ab53b8af13b9d20fe1d6c0c21365f08964c4eaa5304539  # [linux64 and (cuda_compiler_version or "").startswith("13")]
-  sha256: edd081922e4529361c13b47a6028f0a60bb8b94f8959a13ad4919ed9b58afe96  # [aarch64 and (cuda_compiler_version or "").startswith("12")]
-  sha256: 97b3176b864b930adf5b89d73d4b1e46509595019486dbc4d01cb25218d4abf8  # [aarch64 and (cuda_compiler_version or "").startswith("13")]
+  - url: "https://developer.download.nvidia.com/compute/cublasmp/redist/libcublasmp/linux-x86_64/libcublasmp-linux-x86_64-{{ version }}_cuda12-archive.tar.xz"  # [linux and x86_64 and (cuda_compiler_version or "").startswith("12")]
+    sha256: "35fea4df2bb08a496981f34c0d486f0753d3766a31d60dbe6daa6f16673cd1cc"  # [linux and x86_64 and (cuda_compiler_version or "").startswith("12")]
+  - url: "https://developer.download.nvidia.com/compute/cublasmp/redist/libcublasmp/linux-x86_64/libcublasmp-linux-x86_64-{{ version }}_cuda13-archive.tar.xz"  # [linux and x86_64 and (cuda_compiler_version or "").startswith("13")]
+    sha256: "9de8de5f505a0a5f353c7a52259450e364418b2c645bf08da2a550731a09b8f8"  # [linux and x86_64 and (cuda_compiler_version or "").startswith("13")]
+  - url: "https://developer.download.nvidia.com/compute/cublasmp/redist/libcublasmp/linux-sbsa/libcublasmp-linux-sbsa-{{ version }}_cuda12-archive.tar.xz"  # [linux and aarch64 and (cuda_compiler_version or "").startswith("12") and arm_variant_type == "sbsa"]
+    sha256: "51aed588b7faf5c96c283010792c7fa703311037867ef9a5f99af5f3e04e4623"  # [linux and aarch64 and (cuda_compiler_version or "").startswith("12") and arm_variant_type == "sbsa"]
+  - url: "https://developer.download.nvidia.com/compute/cublasmp/redist/libcublasmp/linux-sbsa/libcublasmp-linux-sbsa-{{ version }}_cuda13-archive.tar.xz"  # [linux and aarch64 and (cuda_compiler_version or "").startswith("13") and arm_variant_type == "sbsa"]
+    sha256: "eedfce3afd25db78e2fc1695b63dc460c208d79830e5574d4f5ed6dec77d553e"  # [linux and aarch64 and (cuda_compiler_version or "").startswith("13") and arm_variant_type == "sbsa"]
 
 build:
   number: 0
-  skip: true  # [cuda_compiler_version in (None, "None") or (cuda_compiler_version or "").startswith("11")]
-  skip: true  # [not (linux64 or aarch64)]
+  skip: true  # [(cuda_compiler_version in (None, "None")) or (cuda_compiler_version or "").startswith("11") or (not (linux64 or aarch64))]
   script:
-    - check-glibc lib/*.so.*
     - cp -rv include $PREFIX
     - cp -rv lib $PREFIX
+    - check-glibc "$PREFIX"/lib/*.so.*  # [linux]
 
 requirements:
   build:
-    - cf-nvidia-tools 1   # [linux]
+    - cf-nvidia-tools 1.*  # [linux]
 
 outputs:
   - name: libcublasmp
     build:
       ignore_run_exports:
+        # cuBLASMp supports CUDA Enhanced Compatibility; do not pin cuda-version via run_exports.
         - cuda-version
       run_exports:
-       # potentially breaking changes with every minor version until 1.0.0
+        # Potentially breaking changes with every minor version until 1.0.0.
         - {{ pin_subpackage("libcublasmp", max_pin="x.x") }}
       missing_dso_whitelist:
         - "*libcuda.so*"
@@ -50,23 +49,23 @@ outputs:
         - {{ compiler('cxx') }}
         - {{ compiler('cuda') }}
         - {{ stdlib("c") }}
+        - arm-variant * {{ arm_variant_type }}  # [linux and aarch64]
       host:
         - cuda-version {{ cuda_compiler_version }}
         - libcublas
         - nccl
-        - libnvshmem3
       run:
         - {{ pin_compatible("cuda-version", max_pin="x") }}
         - libcublas
         - nccl
-        - libnvshmem3
     test:
       commands:
-        - test -L $PREFIX/lib/libcublasmp.so.0
+        - test -L $PREFIX/lib/libcublasmp.so.{{ somajor }}
         - test -f $PREFIX/lib/libcublasmp.so.{{ lib_version }}
     about:
       home: https://docs.nvidia.com/cuda/cublasmp/
       license: LicenseRef-NVIDIA-End-User-License-Agreement
+      license_family: Other
       license_file: LICENSE
       license_url: https://docs.nvidia.com/cuda/cublasmp/license/index.html
       summary: NVIDIA cuBLASMp is a high performance, multi-process, GPU accelerated library for distributed basic dense linear algebra.
@@ -74,6 +73,7 @@ outputs:
         NVIDIA cuBLASMp is a high performance, multi-process, GPU accelerated library for distributed basic dense linear algebra.
         cuBLASMp is compatible with 2D block-cyclic data layout and provides PBLAS-like C APIs.
       doc_url: https://docs.nvidia.com/cuda/cublasmp/
+      dev_url: https://docs.nvidia.com/cuda/cublasmp/
 
   - name: libcublasmp-dev
     build:
@@ -96,6 +96,7 @@ outputs:
     about:
       home: https://docs.nvidia.com/cuda/cublasmp/
       license: LicenseRef-NVIDIA-End-User-License-Agreement
+      license_family: Other
       license_file: LICENSE
       license_url: https://docs.nvidia.com/cuda/cublasmp/license/index.html
       summary: NVIDIA cuBLASMp is a high performance, multi-process, GPU accelerated library for distributed basic dense linear algebra.
@@ -103,10 +104,12 @@ outputs:
         NVIDIA cuBLASMp is a high performance, multi-process, GPU accelerated library for distributed basic dense linear algebra.
         cuBLASMp is compatible with 2D block-cyclic data layout and provides PBLAS-like C APIs.
       doc_url: https://docs.nvidia.com/cuda/cublasmp/
+      dev_url: https://docs.nvidia.com/cuda/cublasmp/
 
 about:
   home: https://docs.nvidia.com/cuda/cublasmp/
   license: LicenseRef-NVIDIA-End-User-License-Agreement
+  license_family: Other
   license_file: LICENSE
   license_url: https://docs.nvidia.com/cuda/cublasmp/license/index.html
   summary: NVIDIA cuBLASMp is a high performance, multi-process, GPU accelerated library for distributed basic dense linear algebra.
@@ -114,8 +117,16 @@ about:
     NVIDIA cuBLASMp is a high performance, multi-process, GPU accelerated library for distributed basic dense linear algebra.
     cuBLASMp is compatible with 2D block-cyclic data layout and provides PBLAS-like C APIs.
   doc_url: https://docs.nvidia.com/cuda/cublasmp/
+  dev_url: https://docs.nvidia.com/cuda/cublasmp/
 
 extra:
+  skip-lints:
+    # license_url is kept on all Nvidia feedstocks per team convention
+    - deprecate_license_url
+    # libcublas/nccl have independent CUDA-library versions (not the toolkit
+    # version) and no CBC pin var; cuda-version steers the right major. Same
+    # approach as magma-feedstock.
+    - host_section_needs_exact_pinnings
   recipe-maintainers:
     - almogsegal
     - mrogowski

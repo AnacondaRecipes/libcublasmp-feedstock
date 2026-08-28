@@ -122,11 +122,14 @@ about:
 
 extra:
   skip-lints:
-    # license_url is kept on all Nvidia feedstocks per team convention
+    # license_url is retained on the NVIDIA redist feedstocks (libcublas,
+    # libcusolver, libnvshmem); suppress the deprecation lint rather than drop
+    # the EULA link.
     - deprecate_license_url
     # libcublas has an independent CUDA-library version (not the toolkit
-    # version) and no CBC pin var; cuda-version steers the right major. Same
-    # approach as magma-feedstock.
+    # version) and no CBC pin var; the host cuda-version pin steers the
+    # compatible libcublas, which itself declares cuda-version >=X.Y,<X.Y+1.
+    # Same approach as magma-feedstock.
     - host_section_needs_exact_pinnings
   recipe-maintainers:
     - almogsegal
